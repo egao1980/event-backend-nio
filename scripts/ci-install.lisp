@@ -10,6 +10,13 @@
 
 (asdf:load-system "cl-repository-client")
 (cl-repo:add-registry "https://ghcr.io" :namespace "egao1980/cl-systems" :priority :prepend)
+
+;; Install event-protocol first and register it with ASDF so
+;; event-protocol/conformance resolves from the same checkout — not the
+;; stale secondary OCI package event-protocol/conformance:0.1.1.
+(cl-repo:ensure-systems '("event-protocol") :force t)
+(cl-repository-client/asdf-integration:configure-asdf-source-registry)
+
 (cl-repo:ensure-system-dependencies "event-backend-nio"
   :also-tests t
   :sources '(("bordeaux-threads" :ql)
