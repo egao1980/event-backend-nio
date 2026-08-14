@@ -29,27 +29,20 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: egao1980/cl-repository/.github/actions/setup-client@main
-      - name: Install Roswell
-        shell: bash
-        run: |
-          curl -sL https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | bash
-          echo "$HOME/.roswell/bin" >> "$GITHUB_PATH"
+      - uses: egao1980/cl-repository/.github/actions/setup-roswell@main
+        with:
+          install-sbcl: "false"
+          roswell-version: ${{ env.ROSWELL_VERSION }}
       - name: Install ABCL
         shell: bash
         run: |
           ros install abcl-bin
           ros use abcl-bin
-      - name: Bootstrap client QL deps
-        shell: bash
-        run: |
-          ros -e '(ql:quickload (quote ("yason" "ironclad" "babel" "dexador" "quri" "chipz" "flexi-streams" "cl-ppcre" "cl-base64" "trivial-features" "salza2" "archive" "bordeaux-threads" "rove")) :silent t)' -q
       - name: cl-repo install deps
         shell: bash
         run: |
-          export CL_SOURCE_REGISTRY="$(pwd)//:$(pwd)/${CL_REPOSITORY_CLIENT_DIR}//:"
           ros -l scripts/ci-install.lisp -q
       - name: Test
         shell: bash
         run: |
-          export CL_SOURCE_REGISTRY="$(pwd)//:$(pwd)/${CL_REPOSITORY_CLIENT_DIR}//:"
           ros -l scripts/ci-test.lisp -q
