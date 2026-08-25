@@ -1,27 +1,24 @@
-name: Test
+name: test
 
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
-
-concurrency:
-  group: event-backend-nio-test-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   ROSWELL_VERSION: "26.02.116"
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  JAVA_TOOL_OPTIONS: "--enable-native-access=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED"
 
 jobs:
+
   test-abcl:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: read
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v4
@@ -38,11 +35,22 @@ jobs:
         run: |
           ros install abcl-bin
           ros use abcl-bin
-      - name: cl-repo install deps
+      - name: Install JNA (CFFI on ABCL)
         shell: bash
         run: |
-          ros -l scripts/ci-install.lisp -q
-      - name: Test
-        shell: bash
-        run: |
-          ros -l scripts/ci-test.lisp -q
+          JNA_VER=5.14.0
+          mkdir -p "$HOME/jna"
+          curl -fsSL -o "$HOME/jna/jna-${JNA_VER}.jar" \
+            "https://repo1.maven.org/maven2/net/java/dev/jna/jna/${JNA_VER}/jna-${JNA_VER}.jar"
+          curl -fsSL -o "$HOME/jna/jna-platform-${JNA_VER}.jar" \
+            "https://repo1.maven.org/maven2/net/java/dev/jna/jna-platform/${JNA_VER}/jna-platform-${JNA_VER}.jar"
+          {
+            echo "CLASSPATH=$HOME/jna/jna-${JNA_VER}.jar:$HOME/jna/jna-platform-${JNA_VER}.jar${CLASSPATH:+:$CLASSPATH}"
+            echo "JAVA_TOOL_OPTIONS=--enable-native-access=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED ${JAVA_TOOL_OPTIONS:-}"
+          } >> "$GITHUB_ENV"
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: install
+      - uses: egao1980/cl-repository/.github/actions/ci@main
+        with:
+          phase: test

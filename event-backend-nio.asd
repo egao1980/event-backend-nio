@@ -10,7 +10,7 @@
                (:file "backend"))
   :in-order-to ((test-op (test-op "event-backend-nio/tests")))
   :properties
-  (:cl-repo (:provides ("event-backend-nio"))))
+  (:cl-repo (:provides ("event-backend-nio") :ci (:sources (("bordeaux-threads" :ql) ("rove" :ql))))))
 
 (defsystem "event-backend-nio/tests"
   :depends-on ("event-backend-nio" "event-protocol/conformance" "rove")
