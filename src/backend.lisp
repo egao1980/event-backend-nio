@@ -27,7 +27,8 @@
    (timers :initform nil :accessor nio-loop-timers) ; sorted by deadline ascending
    (stop-p :initform nil :accessor nio-loop-stop-p)
    (closed :initform nil :accessor nio-loop-closed-p)
-   (io-count :initform 0 :accessor nio-loop-io-count)))
+   (io-count :initform 0 :accessor nio-loop-io-count)
+   (submit-pool :initform nil :accessor nio-loop-submit-pool)))
 
 (defclass nio-handle (event-handle)
   ((kind :initarg :kind :reader nio-handle-kind)
@@ -35,6 +36,19 @@
    (deadline :initarg :deadline :accessor nio-handle-deadline :initform nil)
    (key :initarg :key :accessor nio-handle-key :initform nil)
    (direction :initarg :direction :accessor nio-handle-direction :initform nil)))
+
+(defun %ensure-submit-pool (loop)
+  (or (nio-loop-submit-pool loop)
+      (setf (nio-loop-submit-pool loop)
+            (make-thread-pool
+             :name (format nil "event-submit-~A"
+                           (backend-name (event-loop-backend loop)))))))
+
+(defun %shutdown-submit-pool (loop)
+  (let ((pool (nio-loop-submit-pool loop)))
+    (when pool
+      (executor-shutdown pool :wait t)
+      (setf (nio-loop-submit-pool loop) nil))))
 
 (defun %now ()
   (/ (get-internal-real-time) (float internal-time-units-per-second 1d0)))
@@ -57,6 +71,7 @@
 
 (defun close-loop (loop)
   "Close the Selector and mark LOOP closed."
+  (%shutdown-submit-pool loop)
   (bt:with-lock-held ((nio-loop-lock loop))
     (unless (nio-loop-closed-p loop)
       (setf (nio-loop-closed-p loop) t
@@ -85,8 +100,9 @@
   #+abcl
   (ignore-errors (%jcall "wakeup" (nio-loop-selector loop))))
 
-(defun wake-call (loop function)
+(defmethod wake-call ((backend nio-backend) (loop nio-loop) function)
   "Enqueue FUNCTION and wake LOOP (thread-safe)."
+  (declare (ignore backend))
   (%assert-open loop)
   (%push-queue loop 'wake-queue function)
   (%wakeup loop)
@@ -264,28 +280,29 @@
 (defmethod run ((backend nio-backend) (loop nio-loop) &key (stop-when-idle t))
   (%assert-open loop)
   (setf (nio-loop-stop-p loop) nil)
-  #+abcl
-  (let ((sel (nio-loop-selector loop)))
-    (loop
-      (when (nio-loop-stop-p loop)
-        (return))
-      (%drain-handles (%steal-queue loop 'defer-queue))
-      (%drain-wake loop)
-      (%fire-due-timers loop)
-      (when (nio-loop-stop-p loop)
-        (return))
-      (when (and stop-when-idle (%idle-p loop))
-        (return))
-      (let ((timeout (%next-timeout-ms loop)))
-        (cond ((null timeout)
-               (if (and stop-when-idle (zerop (nio-loop-io-count loop)))
-                   (return)
-                   (%jcall "select" sel)))
-              ((zerop timeout)
-               (%jcall "selectNow" sel))
-              (t
-               (%jcall "select" sel timeout))))
-      (%process-selected loop)))
-  #-abcl
-  (error 'unsupported-operation :operation 'run)
+  (with-event-loop-var (loop)
+    #+abcl
+    (let ((sel (nio-loop-selector loop)))
+      (loop
+        (when (nio-loop-stop-p loop)
+          (return))
+        (%drain-handles (%steal-queue loop 'defer-queue))
+        (%drain-wake loop)
+        (%fire-due-timers loop)
+        (when (nio-loop-stop-p loop)
+          (return))
+        (when (and stop-when-idle (%idle-p loop))
+          (return))
+        (let ((timeout (%next-timeout-ms loop)))
+          (cond ((null timeout)
+                 (if (and stop-when-idle (zerop (nio-loop-io-count loop)))
+                     (return)
+                     (%jcall "select" sel)))
+                ((zerop timeout)
+                 (%jcall "selectNow" sel))
+                (t
+                 (%jcall "select" sel timeout))))
+        (%process-selected loop)))
+    #-abcl
+    (error 'unsupported-operation :operation 'run))
   loop)
