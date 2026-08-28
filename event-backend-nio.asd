@@ -1,5 +1,5 @@
 (defsystem "event-backend-nio"
-  :version "0.1.1"
+  :version "0.1.2"
   :description "JVM NIO Selector backend for event-protocol (ABCL)"
   :author "egao1980"
   :license "MIT"
