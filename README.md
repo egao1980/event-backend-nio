@@ -19,6 +19,8 @@ On the JVM, `java.nio` beats libuv-via-JNA (no FFI trampoline). This is the ABCL
 
 `register-io` takes a `java.nio.channels.SelectableChannel` (not an OS fd integer).
 
+`submit` with no `:executor` uses a per-loop [`cl-stack-executors`](https://github.com/egao1980/cl-stack-executors) thread pool. Pass a function of one thunk to override.
+
 ## Tests
 
 ```bash
